@@ -1,0 +1,23 @@
+{
+	"name": "AzureSqlTableDest",
+	"properties": {
+		"linkedServiceName": {
+			"referenceName": "AzureSqlDatabaseDest",
+			"type": "LinkedServiceReference"
+		},
+		"parameters": {
+			"TableName": {
+				"type": "string"
+			}
+		},
+		"annotations": [],
+		"type": "AzureSqlTable",
+		"schema": [],
+		"typeProperties": {
+			"tableName": {
+				"value": "@dataset().TableName",
+				"type": "Expression"
+			}
+		}
+	}
+}

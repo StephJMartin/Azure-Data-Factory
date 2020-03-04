@@ -1,0 +1,313 @@
+{
+	"name": "Copy Data From SQL to Azure",
+	"properties": {
+		"activities": [
+			{
+				"name": "Set StagedDateTime",
+				"type": "SetVariable",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "StagedDateTime",
+					"value": {
+						"value": "@utcnow()",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Lookup Table To Copy",
+				"type": "Lookup",
+				"dependsOn": [
+					{
+						"activity": "Set StagedDateTime",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "7.00:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "AzureSqlSource",
+						"sqlReaderStoredProcedureName": "[dbo].[TablesToCopy_Get]",
+						"storedProcedureParameters": {
+							"LoadFrequency": {
+								"type": "String",
+								"value": {
+									"value": "@pipeline().parameters.LoadFrequency",
+									"type": "Expression"
+								}
+							}
+						},
+						"queryTimeout": "02:00:00"
+					},
+					"dataset": {
+						"referenceName": "AzureSqlTableControl",
+						"type": "DatasetReference"
+					},
+					"firstRowOnly": false
+				}
+			},
+			{
+				"name": "ForEach Table",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Lookup Table To Copy",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('Lookup Table To Copy').output.value",
+						"type": "Expression"
+					},
+					"isSequential": false,
+					"activities": [
+						{
+							"name": "Copy from SQL to Azure",
+							"type": "Copy",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "7.00:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlServerSource",
+									"sqlReaderQuery": {
+										"value": "SELECT * FROM @{item().SourceTable} WHERE ModifiedDate > '@{item().StagedDateTime}'",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00"
+								},
+								"sink": {
+									"type": "AzureSqlSink"
+								},
+								"enableStaging": false
+							},
+							"inputs": [
+								{
+									"referenceName": "SqlServerTableSource",
+									"type": "DatasetReference"
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "AzureSqlTableDest",
+									"type": "DatasetReference",
+									"parameters": {
+										"TableName": {
+											"value": "@item().DestTable",
+											"type": "Expression"
+										}
+									}
+								}
+							]
+						},
+						{
+							"name": "Sp Update StagedDateTime",
+							"type": "SqlServerStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Copy from SQL to Azure",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "7.00:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"storedProcedureName": "[dbo].[UpdateStagedDateTime]",
+								"storedProcedureParameters": {
+									"SchemaName": {
+										"value": {
+											"value": "@item().SchemaName",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"StagedDateTime": {
+										"value": {
+											"value": "@variables('StagedDateTime')",
+											"type": "Expression"
+										},
+										"type": "DateTime"
+									},
+									"TableName": {
+										"value": {
+											"value": "@item().TableName",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							},
+							"linkedServiceName": {
+								"referenceName": "AzureSqlDatabaseControl",
+								"type": "LinkedServiceReference"
+							}
+						},
+						{
+							"name": "If Table is Dim",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "Sp Update StagedDateTime",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@{equals(item().TableType,'Dim')}",
+									"type": "Expression"
+								},
+								"ifTrueActivities": [
+									{
+										"name": "Stored Procedure1",
+										"type": "SqlServerStoredProcedure",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "7.00:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"storedProcedureName": {
+												"value": "@item().UpsertProcedure",
+												"type": "Expression"
+											}
+										},
+										"linkedServiceName": {
+											"referenceName": "AzureSqlDatabaseDest",
+											"type": "LinkedServiceReference"
+										}
+									},
+									{
+										"name": "Set Completed DateTime",
+										"type": "SetVariable",
+										"dependsOn": [
+											{
+												"activity": "Stored Procedure1",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"userProperties": [],
+										"typeProperties": {
+											"variableName": "CompletedDateTime",
+											"value": {
+												"value": "@utcnow()",
+												"type": "Expression"
+											}
+										}
+									},
+									{
+										"name": "Sp Set Complete",
+										"type": "SqlServerStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "Set Completed DateTime",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "7.00:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"storedProcedureName": "[dbo].[UpdateCompletedDateTime]",
+											"storedProcedureParameters": {
+												"CompletedDateTime": {
+													"value": {
+														"value": "@variables('CompletedDateTime')",
+														"type": "Expression"
+													},
+													"type": "DateTime"
+												},
+												"SchemaName": {
+													"value": {
+														"value": "@item().SchemaName",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"StagedDateTime": {
+													"value": {
+														"value": "@variables('StagedDateTime')",
+														"type": "Expression"
+													},
+													"type": "DateTime"
+												},
+												"TableName": {
+													"value": {
+														"value": "@item().TableName",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										},
+										"linkedServiceName": {
+											"referenceName": "AzureSqlDatabaseControl",
+											"type": "LinkedServiceReference"
+										}
+									}
+								]
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"LoadFrequency": {
+				"type": "string"
+			}
+		},
+		"variables": {
+			"StagedDateTime": {
+				"type": "String"
+			},
+			"CompletedDateTime": {
+				"type": "String"
+			}
+		},
+		"annotations": []
+	}
+}

@@ -1,0 +1,7 @@
+{
+	"name": "SelfHostedIntegrationRuntime",
+	"properties": {
+		"type": "SelfHosted",
+		"description": "Shared by all data factories in this subscription"
+	}
+}

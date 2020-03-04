@@ -1,0 +1,12 @@
+{
+	"name": "AzureSqlTableControl",
+	"properties": {
+		"linkedServiceName": {
+			"referenceName": "AzureSqlDatabaseControl",
+			"type": "LinkedServiceReference"
+		},
+		"annotations": [],
+		"type": "AzureSqlTable",
+		"schema": []
+	}
+}

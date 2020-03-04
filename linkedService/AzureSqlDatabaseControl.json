@@ -1,0 +1,19 @@
+{
+	"name": "AzureSqlDatabaseControl",
+	"type": "Microsoft.DataFactory/factories/linkedservices",
+	"properties": {
+		"annotations": [],
+		"type": "AzureSqlDatabase",
+		"typeProperties": {
+			"connectionString": "Integrated Security=False;Encrypt=True;Connection Timeout=30;Data Source=[SQLDBServer].database.windows.net;Initial Catalog=ControlDB;User ID=[User]",
+			"password": {
+				"type": "AzureKeyVaultSecret",
+				"store": {
+					"referenceName": "AzureKeyVault",
+					"type": "LinkedServiceReference"
+				},
+				"secretName": "[SecretName]"
+			}
+		}
+	}
+}
